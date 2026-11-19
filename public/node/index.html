@@ -306,7 +306,8 @@
 
     <script>
         // ===== CONFIG & STATE =====
-        const WS_URL = `ws://${location.hostname}:3000`;
+        const WS_PORT = location.port || 10000;
+        const WS_URL = `ws://${location.hostname}:${WS_PORT}`;
         let ws = null;
         let worker = null;
         let wakeLock = null;

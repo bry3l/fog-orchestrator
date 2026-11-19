@@ -333,7 +333,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script>
-        const WS_URL = `ws://${location.hostname}:3000`;
+        const WS_PORT = location.port || 10000;
+        const WS_URL = `ws://${location.hostname}:${WS_PORT}`;
         let ws = null;
         let currentFile = null;
         let chunkMap = [];
@@ -368,7 +369,7 @@
         }
 
         function generateQR() {
-            const url = `http://${location.hostname}:3000/node`;
+            const url = `http://${location.hostname}:${location.port || 10000}/node`;
             new QRCode(document.getElementById('qrCanvas'), {
                 text: url, width: 160, height: 160,
                 colorDark: '#00ff41', colorLight: '#050505',
