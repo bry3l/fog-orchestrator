@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <title>Nodo Fog-DNA</title>
+    <style>
+        :root {
+            --bg: #0a0f1a;
+            --bg-elevated: #111827;
+            --card-bg: #1e293b;
+            --border: #334155;
+            --neon: #00d4aa;
+            --neon-glow: rgba(0, 212, 170, 0.4);
+            --warn: #fbbf24;
+            --danger: #f87171;
+            --text: #f1f5f9;
+            --text-dim: #64748b;
+            --accent: #38bdf8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex; flex-direction: column;
+            overscroll-behavior: none;
+            touch-action: manipulation;
+        }
+        body::before {
+            content: ''; position: fixed; inset: 0; z-index: -1;
+            background:
+                radial-gradient(ellipse at 50% -20%, rgba(0,212,170,0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 100% 100%, rgba(56,189,248,0.05) 0%, transparent 40%);
+        }
+
+        .screen { display: none; flex-direction: column; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+        .screen.active { display: flex; }
+
+        /* Screen 1: Join */
+        #joinScreen { justify-content: center; align-items: center; padding: 24px; text-align: center; }
+        .join-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 24px; padding: 40px 32px; width: 100%; max-width: 380px; box-shadow: 0 20px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05); }
+        .join-icon { width: 80px; height: 80px; margin: 0 auto 24px; background: linear-gradient(135deg, var(--neon) 0%, var(--accent) 100%); border-radius: 20px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,212,170,0.3); }
+        .join-icon svg { width: 40px; height: 40px; stroke: #051a16; }
+        .join-card h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.02em; }
+        .join-card .subtitle { color: var(--text-dim); font-size: 0.95rem; margin-bottom: 28px; line-height: 1.5; }
+        .input-group { text-align: left; margin-bottom: 20px; }
+        .input-group label { display: block; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 8px; }
+        .input-group input {
+            width: 100%; padding: 16px 18px; font-size: 1rem; font-family: inherit;
+            background: var(--bg); border: 2px solid var(--border); border-radius: 14px; color: var(--text);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input-group input:focus { outline: none; border-color: var(--neon); box-shadow: 0 0 0 4px var(--neon-glow); }
+        .btn-join {
+            width: 100%; padding: 18px; font-size: 1rem; font-weight: 700; font-family: inherit;
+            background: linear-gradient(135deg, var(--neon) 0%, #00b894 100%);
+            color: #051a16; border: none; border-radius: 14px;
+            cursor: pointer; transition: transform 0.1s, box-shadow 0.2s;
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .btn-join:active { transform: scale(0.98); }
+        .btn-join:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-join:focus-visible { outline: 2px solid var(--neon); outline-offset: 3px; }
+
+        /* Screen 2: Main Node */
+        #mainScreen { padding: 16px; gap: 16px; }
+        .header {
+            text-align: center; padding: 8px 0 4px;
+        }
+        .header-icon { width: 56px; height: 56px; margin: 0 auto 12px; background: linear-gradient(135deg, var(--neon) 0%, var(--accent) 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(0,212,170,0.25); }
+        .header-icon svg { width: 28px; height: 28px; stroke: #051a16; }
+        .header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; }
+        .header p { color: var(--text-dim); font-size: 0.85rem; margin-top: 4px; }
+
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+        .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); }
+        .card-header h2 { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--neon); }
+
+        /* Status Card with Circular Progress */
+        #statusCard .card-body { padding: 24px 20px 32px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        .user-badge { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 100px; }
+        .user-avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--neon) 0%, var(--accent) 100%); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #051a16; font-size: 1rem; }
+        .user-name { font-weight: 600; font-size: 0.95rem; }
+        .status-ring {
+            position: relative; width: 200px; height: 200px;
+            filter: drop-shadow(0 0 24px var(--neon-glow));
+        }
+        .status-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+        .ring-bg { fill: none; stroke: var(--border); stroke-width: 10; }
+        .ring-progress {
+            fill: none; stroke: url(#neonGradient); stroke-width: 10; stroke-linecap: round;
+            stroke-dasharray: 565.48; stroke-dashoffset: 565.48;
+            transition: stroke-dashoffset 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .ring-text {
+            position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none;
+        }
+        .ring-percent { font-size: 3rem; font-weight: 700; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+        .ring-suffix { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 4px; }
+        .status-text { font-size: 0.9rem; color: var(--text-dim); text-align: center; min-height: 1.4em; transition: color 0.3s; }
+        .status-text.active { color: var(--neon); text-shadow: 0 0 12px var(--neon-glow); }
+
+        /* Current Work Card */
+        #workCard .card-body { padding: 20px; }
+        .work-item { display: flex; align-items: center; gap: 14px; padding: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; }
+        .work-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .work-icon.processing { background: rgba(251,191,36,0.15); border: 1px solid var(--warn); }
+        .work-icon.idle { background: rgba(100,116,139,0.15); border: 1px solid var(--border); }
+        .work-icon svg { width: 22px; height: 22px; stroke: currentColor; }
+        .work-icon.processing svg { color: var(--warn); animation: spin 1.5s linear infinite; }
+        .work-icon.idle svg { color: var(--text-dim); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .work-info { flex: 1; min-width: 0; }
+        .work-title { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .work-detail { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Metrics Grid 2x3 */
+        #metricsCard .card-body { padding: 16px; }
+        .metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        .metric-card {
+            background: var(--bg); border: 1px solid var(--border); border-radius: 16px; padding: 16px 12px;
+            display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .metric-card:hover { border-color: var(--neon); box-shadow: 0 0 16px var(--neon-glow); }
+        .metric-icon { width: 28px; height: 28px; stroke: var(--neon); opacity: 0.8; }
+        .metric-value { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); line-height: 1.2; }
+        .metric-label { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+        .metric-unit { font-size: 0.6rem; color: var(--text-dim); font-weight: 500; }
+
+        /* Wake Lock Indicator */
+        .wake-lock { position: fixed; bottom: 20px; right: 20px; z-index: 50; }
+        .wake-btn {
+            width: 56px; height: 56px; border-radius: 50%; border: none;
+            background: linear-gradient(135deg, var(--neon) 0%, var(--accent) 100%);
+            color: #051a16; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 8px 24px rgba(0,212,170,0.4); cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .wake-btn:active { transform: scale(0.95); }
+        .wake-btn.active { box-shadow: 0 8px 32px rgba(251,191,36,0.5); background: linear-gradient(135deg, var(--warn) 0%, #f59e0b 100%); }
+        .wake-btn svg { width: 24px; height: 24px; }
+
+        /* Toast */
+        .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(100px); opacity: 0; z-index: 100; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+        .toast-content { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 14px 20px; display: flex; align-items: center; gap: 12px; box-shadow: 0 16px 40px rgba(0,0,0,0.5); }
+        .toast.success { border-color: var(--neon); }
+        .toast.error { border-color: var(--danger); }
+        .toast-icon { width: 20px; height: 20px; flex-shrink: 0; }
+        .toast.success .toast-icon { stroke: var(--neon); }
+        .toast.error .toast-icon { stroke: var(--danger); }
+        .toast-msg { font-size: 0.85rem; font-weight: 500; }
+
+        @media (max-width: 360px) {
+            .metrics-grid { gap: 8px; }
+            .metric-card { padding: 14px 8px; }
+            .metric-value { font-size: 1.1rem; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Screen 1: Join -->
+    <div class="screen active" id="joinScreen">
+        <div class="join-card">
+            <div class="join-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+            </div>
+            <h1>Fog-DNA Node</h1>
+            <p class="subtitle">Este celular trabajará como nodo de la niebla para procesamiento distribuido</p>
+            <div class="input-group">
+                <label for="nodeName">Tu nombre</label>
+                <input type="text" id="nodeName" placeholder="Ej: Bryan" maxlength="20" autocomplete="off" autocapitalize="words" required>
+            </div>
+            <button class="btn-join" id="btnJoin" disabled>Unirme a la niebla</button>
+        </div>
+    </div>
+
+    <!-- Screen 2: Main Node Interface -->
+    <div class="screen" id="mainScreen">
+        <header class="header">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+            </div>
+            <h1>Nodo Periférico Activo</h1>
+            <p>Conectado al orquestador maestro</p>
+        </header>
+
+        <!-- Status & Progress Card -->
+        <section class="card" id="statusCard">
+            <div class="card-header"><h2>Estado y Progreso</h2></div>
+            <div class="card-body">
+                <div class="user-badge">
+                    <div class="user-avatar" id="userAvatar">?</div>
+                    <span class="user-name" id="userDisplay">Conectado como...</span>
+                </div>
+                <div class="status-ring">
+                    <svg viewBox="0 0 200 200">
+                        <defs>
+                            <linearGradient id="neonGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#00d4aa"/>
+                                <stop offset="100%" stop-color="#38bdf8"/>
+                            </linearGradient>
+                        </defs>
+                        <circle class="ring-bg" cx="100" cy="100" r="90"/>
+                        <circle class="ring-progress" id="ringProgress" cx="100" cy="100" r="90"/>
+                    </svg>
+                    <div class="ring-text">
+                        <span class="ring-percent" id="ringPercent">0</span>
+                        <span class="ring-suffix" id="ringSuffix">%</span>
+                    </div>
+                </div>
+                <p class="status-text" id="statusText">Esperando trabajo del maestro...</p>
+            </div>
+        </section>
+
+        <!-- Current Work Card -->
+        <section class="card" id="workCard">
+            <div class="card-header"><h2>Trabajo Actual</h2></div>
+            <div class="card-body">
+                <div class="work-item" id="workItem">
+                    <div class="work-icon idle" id="workIcon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                    </div>
+                    <div class="work-info">
+                        <div class="work-title" id="workTitle">Ninguno todavía</div>
+                        <div class="work-detail" id="workDetail">En espera de asignación de fragmento</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Metrics Grid Card -->
+        <section class="card" id="metricsCard">
+            <div class="card-header"><h2>Métricas en Tiempo Real</h2></div>
+            <div class="card-body">
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        <div class="metric-value" id="mChunks">0</div>
+                        <div class="metric-label">Trozos hechos</div>
+                    </div>
+                    <div class="metric-card">
+                        <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        <div class="metric-value" id="mProcessed">0.00</div>
+                        <div class="metric-label">Procesado</div>
+                        <div class="metric-unit">MB</div>
+                    </div>
+                    <div class="metric-card">
+                        <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        <div class="metric-value" id="mCalcSpeed">0.00</div>
+                        <div class="metric-label">Vel. cálculo</div>
+                        <div class="metric-unit">MB/s</div>
+                    </div>
+                    <div class="metric-card">
+                        <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                        <div class="metric-value" id="mDownload">0.00</div>
+                        <div class="metric-label">Descarga Wi-Fi</div>
+                        <div class="metric-unit">MB/s</div>
+                    </div>
+                    <div class="metric-card">
+                        <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="6" x2="12" y2="12"/><line x1="12" y1="12" x2="16" y2="14"/></svg>
+                        <div class="metric-value" id="mLatency">0</div>
+                        <div class="metric-label">Latencia</div>
+                        <div class="metric-unit">ms</div>
+                    </div>
+                    <div class="metric-card">
+                        <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+                        <div class="metric-value" id="mThreads">0</div>
+                        <div class="metric-label">Hilos activos</div>
+                        <div class="metric-unit">/ <span id="totalCores">0</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Wake Lock Button -->
+        <div class="wake-lock">
+            <button class="wake-btn" id="wakeBtn" aria-label="Activar bloqueo de pantalla">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l22 22"/><path d="M12 7v10"/><path d="M7 12h10"/></svg>
+            </button>
+        </div>
+
+        <!-- Toast -->
+        <div class="toast" id="toast" role="alert" aria-live="polite">
+            <div class="toast-content" id="toastContent">
+                <svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                <span class="toast-msg" id="toastMsg">Mensaje</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== CONFIG & STATE =====
+        const WS_URL = `ws://${location.hostname}:3000`;
+        let ws = null;
+        let worker = null;
+        let wakeLock = null;
+        let nodeName = '';
+        let nodeId = '';
+        let currentChunk = null;
+        let benchmarkDone = false;
+        let lastPingTime = 0;
+
+        const metrics = {
+            chunksDone: 0,
+            processedMB: 0,
+            calcSpeed: 0,
+            downloadSpeed: 0,
+            latency: 0,
+            activeThreads: 0
+        };
+
+        // ===== DOM ELEMENTS =====
+        const screens = {
+            join: document.getElementById('joinScreen'),
+            main: document.getElementById('mainScreen')
+        };
+        const joinInput = document.getElementById('nodeName');
+        const btnJoin = document.getElementById('btnJoin');
+        const userAvatar = document.getElementById('userAvatar');
+        const userDisplay = document.getElementById('userDisplay');
+        const ringProgress = document.getElementById('ringProgress');
+        const ringPercent = document.getElementById('ringPercent');
+        const ringSuffix = document.getElementById('ringSuffix');
+        const statusText = document.getElementById('statusText');
+        const workIcon = document.getElementById('workIcon');
+        const workTitle = document.getElementById('workTitle');
+        const workDetail = document.getElementById('workDetail');
+        const wakeBtn = document.getElementById('wakeBtn');
+        const toast = document.getElementById('toast');
+        const toastContent = document.getElementById('toastContent');
+        const toastMsg = document.getElementById('toastMsg');
+
+        const metricEls = {
+            chunks: document.getElementById('mChunks'),
+            processed: document.getElementById('mProcessed'),
+            calcSpeed: document.getElementById('mCalcSpeed'),
+            download: document.getElementById('mDownload'),
+            latency: document.getElementById('mLatency'),
+            threads: document.getElementById('mThreads'),
+            totalCores: document.getElementById('totalCores')
+        };
+
+        const RING_CIRCUMFERENCE = 2 * Math.PI * 90;
+        ringProgress.style.strokeDasharray = RING_CIRCUMFERENCE;
+        ringProgress.style.strokeDashoffset = RING_CIRCUMFERENCE;
+
+        // ===== UTILS =====
+        function showToast(msg, type = 'success') {
+            toastMsg.textContent = msg;
+            toastContent.className = `toast-content ${type}`;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        function setRingProgress(percent) {
+            const offset = RING_CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, percent / 100)));
+            ringProgress.style.strokeDashoffset = offset;
+            ringPercent.textContent = Math.round(percent);
+        }
+
+        function updateMetricsUI() {
+            metricEls.chunks.textContent = metrics.chunksDone;
+            metricEls.processed.textContent = metrics.processedMB.toFixed(2);
+            metricEls.calcSpeed.textContent = metrics.calcSpeed.toFixed(2);
+            metricEls.download.textContent = metrics.downloadSpeed.toFixed(2);
+            metricEls.latency.textContent = metrics.latency;
+            metricEls.threads.textContent = metrics.activeThreads;
+        }
+
+        // ===== WAKE LOCK =====
+        async function requestWakeLock() {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLock.addEventListener('release', () => {
+                    wakeBtn.classList.remove('active');
+                    showToast('Bloqueo de pantalla liberado', 'error');
+                });
+                wakeBtn.classList.add('active');
+                showToast('Pantalla bloqueada: no se apagará');
+            } catch (e) {
+                showToast('Wake Lock no soportado: ' + e.message, 'error');
+            }
+        }
+
+        function releaseWakeLock() {
+            if (wakeLock) {
+                wakeLock.release();
+                wakeLock = null;
+            }
+            wakeBtn.classList.remove('active');
+        }
+
+        wakeBtn.addEventListener('click', () => {
+            if (wakeLock) releaseWakeLock();
+            else requestWakeLock();
+        });
+
+        // ===== WEB WORKER =====
+        function initWorker() {
+            if (typeof Worker === 'undefined') {
+                showToast('Web Workers no soportados', 'error');
+                return;
+            }
+            worker = new Worker('worker.js');
+            worker.onmessage = handleWorkerMessage;
+            worker.onerror = (e) => {
+                console.error('Worker error:', e);
+                showToast('Error en Worker: ' + e.message, 'error');
+            };
+            // Send benchmark on init
+            worker.postMessage({ type: 'benchmark', cores: navigator.hardwareConcurrency || 1 });
+        }
+
+        function handleWorkerMessage(e) {
+            const msg = e.data;
+            switch (msg.type) {
+                case 'benchmark_result':
+                    sendWS({ type: 'benchmark_result', payload: { gflops: msg.gflops } });
+                    benchmarkDone = true;
+                    metricEls.totalCores.textContent = msg.cores;
+                    break;
+                case 'progress':
+                    setRingProgress(msg.percent);
+                    ringSuffix.textContent = `% (${msg.suffix || ''})`;
+                    break;
+                case 'chunk_complete':
+                    handleChunkComplete(msg.result, msg.stats);
+                    break;
+                case 'error':
+                    showToast('Worker: ' + msg.message, 'error');
+                    sendWS({ type: 'chunk_result', payload: { chunkId: currentChunk?.id, result: null, error: msg.message } });
+                    currentChunk = null;
+                    setIdleState();
+                    break;
+            }
+        }
+
+        function setIdleState() {
+            workIcon.className = 'work-icon idle';
+            workTitle.textContent = 'Ninguno todavía';
+            workDetail.textContent = 'En espera de asignación de fragmento';
+            statusText.textContent = 'Esperando trabajo del maestro...';
+            statusText.classList.remove('active');
+            setRingProgress(0);
+            ringSuffix.textContent = '%';
+        }
+
+        function setProcessingState(chunk) {
+            workIcon.className = 'work-icon processing';
+            workTitle.textContent = `Procesando: ${chunk.operation}`;
+            workDetail.textContent = `Fragmento ${chunk.id + 1} (${(chunk.size/1024).toFixed(1)} KB)`;
+            statusText.textContent = `Procesando trozo ${chunk.id + 1}...`;
+            statusText.classList.add('active');
+            ringSuffix.textContent = `%`;
+        }
+
+        function handleChunkComplete(result, stats) {
+            metrics.chunksDone++;
+            metrics.processedMB += stats.sizeMB;
+            metrics.calcSpeed = stats.speedMBs;
+            metrics.activeThreads = stats.threads;
+            updateMetricsUI();
+
+            sendWS({
+                type: 'chunk_result',
+                payload: {
+                    chunkId: currentChunk.id,
+                    result: result
+                }
+            });
+
+            currentChunk = null;
+            setIdleState();
+        }
+
+        // ===== WEBSOCKET =====
+        function connectWS() {
+            ws = new WebSocket(WS_URL);
+            ws.onopen = () => {
+                console.log('WS connected');
+                sendWS({
+                    type: 'register',
+                    payload: {
+                        name: nodeName,
+                        role: 'worker',
+                        os: getOS(),
+                        browser: getBrowser(),
+                        cores: navigator.hardwareConcurrency || 1,
+                        ram: navigator.deviceMemory ? navigator.deviceMemory * 1024**3 : 0,
+                        battery: null
+                    }
+                });
+                startHeartbeat();
+                startBatteryMonitor();
+            };
+            ws.onmessage = (e) => handleWSMessage(JSON.parse(e.data));
+            ws.onclose = () => {
+                console.log('WS closed, reconnecting...');
+                showToast('Desconectado. Reconectando...', 'error');
+                setTimeout(connectWS, 3000);
+            };
+            ws.onerror = (err) => console.error('WS error:', err);
+        }
+
+        function sendWS(msg) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(msg));
+            }
+        }
+
+        function handleWSMessage(msg) {
+            switch (msg.type) {
+                case 'registered':
+                    nodeId = msg.payload.id;
+                    showToast(`Conectado como ${nodeName} (ID: ${nodeId})`);
+                    break;
+                case 'task':
+                    handleTask(msg.payload);
+                    break;
+                case 'ping':
+                    sendWS({ type: 'pong', payload: { timestamp: msg.payload.timestamp } });
+                    break;
+            }
+        }
+
+        function handleTask(payload) {
+            currentChunk = {
+                id: payload.chunkId,
+                data: payload.data,
+                operation: payload.operation,
+                size: payload.data?.length || 0
+            };
+            setProcessingState(currentChunk);
+            metrics.activeThreads = navigator.hardwareConcurrency || 1;
+            updateMetricsUI();
+
+            // Convert base64 to ArrayBuffer for worker
+            const binaryString = atob(payload.data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            worker.postMessage({
+                type: 'process',
+                chunk: currentChunk,
+                data: bytes.buffer,
+                operation: payload.operation
+            }, [bytes.buffer]);
+        }
+
+        // ===== HEARTBEAT & TELEMETRY =====
+        let heartbeatInterval = null;
+        function startHeartbeat() {
+            heartbeatInterval = setInterval(() => {
+                if (ws?.readyState !== WebSocket.OPEN) return;
+                lastPingTime = performance.now();
+                sendWS({ type: 'heartbeat', payload: {
+                    latency: metrics.latency,
+                    battery: metrics.batteryLevel,
+                    downloadSpeed: metrics.downloadSpeed,
+                    calcSpeed: metrics.calcSpeed,
+                    activeThreads: metrics.activeThreads
+                }});
+            }, 5000);
+        }
+
+        function startBatteryMonitor() {
+            if ('getBattery' in navigator) {
+                navigator.getBattery().then(battery => {
+                    const updateBattery = () => {
+                        metrics.batteryLevel = Math.round(battery.level * 100);
+                    };
+                    battery.addEventListener('levelchange', updateBattery);
+                    battery.addEventListener('chargingchange', updateBattery);
+                    updateBattery();
+                });
+            }
+        }
+
+        // Measure latency with pong
+        window.addEventListener('message', (e) => {
+            if (e.data.type === 'pong_received') {
+                metrics.latency = Math.round(performance.now() - lastPingTime);
+                updateMetricsUI();
+            }
+        }, false);
+
+        // ===== DEVICE INFO =====
+        function getOS() {
+            const ua = navigator.userAgent;
+            if (/Android/.test(ua)) return `Android ${ua.match(/Android ([\d.]+)/)?.[1] || ''}`;
+            if (/iPhone|iPad|iPod/.test(ua)) return `iOS ${ua.match(/OS ([\d_]+)/)?.[1]?.replace(/_/g, '.') || ''}`;
+            if (/Windows/.test(ua)) return 'Windows';
+            if (/Mac/.test(ua)) return 'macOS';
+            if (/Linux/.test(ua)) return 'Linux';
+            return 'Desconocido';
+        }
+        function getBrowser() {
+            const ua = navigator.userAgent;
+            if (/Edg/.test(ua)) return `Edge ${ua.match(/Edg\/([\d.]+)/)[1]}`;
+            if (/Chrome/.test(ua)) return `Chrome ${ua.match(/Chrome\/([\d.]+)/)[1]}`;
+            if (/Firefox/.test(ua)) return `Firefox ${ua.match(/Firefox\/([\d.]+)/)[1]}`;
+            if (/Safari/.test(ua)) return `Safari ${ua.match(/Version\/([\d.]+)/)?.[1] || ''}`;
+            return 'Desconocido';
+        }
+
+        // ===== JOIN FLOW =====
+        joinInput.addEventListener('input', () => {
+            btnJoin.disabled = !joinInput.value.trim();
+        });
+        joinInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !btnJoin.disabled) btnJoin.click();
+        });
+        btnJoin.addEventListener('click', () => {
+            nodeName = joinInput.value.trim();
+            if (!nodeName) return;
+            userAvatar.textContent = nodeName.charAt(0).toUpperCase();
+            userDisplay.textContent = `Conectado como ${nodeName}`;
+            screens.join.classList.remove('active');
+            screens.main.classList.add('active');
+            initWorker();
+            connectWS();
+            requestWakeLock();
+        });
+
+        // Cleanup on unload
+        window.addEventListener('beforeunload', () => {
+            releaseWakeLock();
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            if (worker) worker.terminate();
+        });
+
+        // Prevent pull-to-refresh on iOS
+        document.body.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 1) e.preventDefault();
+        }, { passive: false });
+    </script>
+</body>
+</html>

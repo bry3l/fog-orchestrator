@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fog Orchestrator | Master Control</title>
+    <style>
+        :root {
+            --bg: #050505;
+            --bg-elevated: #0a0a0a;
+            --border: #1a1a1a;
+            --neon: #00ff41;
+            --neon-dim: #00cc33;
+            --neon-glow: rgba(0, 255, 65, 0.4);
+            --warn: #ffaa00;
+            --danger: #ff3333;
+            --text: #e0ffe0;
+            --text-dim: #66aa66;
+            --card-bg: #0d0d0d;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: ''; position: fixed; inset: 0;
+            background: radial-gradient(ellipse at 50% 0%, rgba(0,255,65,0.03) 0%, transparent 60%),
+                        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,65,0.01) 2px, rgba(0,255,65,0.01) 4px);
+            pointer-events: none; z-index: -1;
+        }
+        .app { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
+        header {
+            padding: 20px 24px; border-bottom: 1px solid var(--border);
+            background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg) 100%);
+            position: sticky; top: 0; z-index: 100;
+        }
+        .header-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; max-width: 1800px; margin: 0 auto; }
+        .logo { display: flex; align-items: center; gap: 12px; }
+        .logo svg { width: 36px; height: 36px; fill: var(--neon); filter: drop-shadow(0 0 8px var(--neon-glow)); animation: pulse 3s ease-in-out infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+        h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+        .version { font-size: 0.7rem; color: var(--text-dim); margin-top: -4px; }
+        .connection-panel { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+        .qr-box { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; text-align: center; }
+        .qr-box h3 { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.1em; }
+        .qr-box canvas { display: block; margin: 0 auto; border: 2px solid var(--border); border-radius: 8px; background: #fff; }
+        .access-link { font-size: 0.7rem; color: var(--neon); word-break: break-all; margin-top: 10px; font-family: inherit; background: none; border: none; cursor: pointer; }
+        .access-link:hover { text-shadow: 0 0 8px var(--neon-glow); }
+        .status-indicators { display: flex; gap: 16px; }
+        .status-pill { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 100px; font-size: 0.75rem; }
+        .status-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+        .status-pill.connected .dot { background: var(--neon); box-shadow: 0 0 8px var(--neon-glow); animation: blink 1.5s ease-in-out infinite; }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        main { padding: 24px; max-width: 1800px; margin: 0 auto; width: 100%; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; }
+        .grid-2 { grid-column: span 2; }
+        @media (max-width: 1200px) { .grid-2 { grid-column: auto; } }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .card:hover { border-color: var(--neon-dim); box-shadow: 0 0 20px var(--neon-glow); }
+        .card-header {
+            padding: 16px 20px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+            background: linear-gradient(90deg, rgba(0,255,65,0.05) 0%, transparent 100%);
+        }
+        .card-header h2 { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--neon); }
+        .card-body { padding: 20px; }
+
+        .node-list { display: flex; flex-direction: column; gap: 12px; max-height: 500px; overflow-y: auto; }
+        .node-card {
+            background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px;
+            display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: start;
+            transition: all 0.2s;
+        }
+        .node-card:hover { border-color: var(--neon-dim); }
+        .node-avatar { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, var(--neon) 0%, #008822 100%); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #000; font-size: 1.1rem; flex-shrink: 0; }
+        .node-info { min-width: 0; }
+        .node-name { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .node-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; font-size: 0.65rem; color: var(--text-dim); }
+        .node-meta span { display: flex; align-items: center; gap: 4px; }
+        .node-metrics { display: flex; flex-direction: column; gap: 4px; text-align: right; font-size: 0.7rem; }
+        .metric { display: flex; justify-content: space-between; gap: 16px; min-width: 140px; }
+        .metric-label { color: var(--text-dim); }
+        .metric-value { color: var(--neon); font-weight: 600; font-variant-numeric: tabular-nums; }
+        .metric-value.warn { color: var(--warn); }
+        .metric-value.danger { color: var(--danger); }
+        .status-badge { padding: 4px 10px; border-radius: 100px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .status-badge.connected { background: rgba(0,255,65,0.15); color: var(--neon); border: 1px solid var(--neon-dim); }
+        .status-badge.processing { background: rgba(255,170,0,0.15); color: var(--warn); border: 1px solid var(--warn); animation: blink 1s infinite; }
+        .status-badge.idle { background: rgba(100,100,100,0.15); color: var(--text-dim); border: 1px solid var(--border); }
+
+        .control-panel { display: flex; flex-direction: column; gap: 16px; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); }
+        select, input[type="file"], input[type="number"] {
+            background: var(--bg); border: 1px solid var(--border); color: var(--text);
+            padding: 12px 14px; border-radius: 8px; font-family: inherit; font-size: 0.85rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        select:focus, input:focus { outline: none; border-color: var(--neon); box-shadow: 0 0 0 3px var(--neon-glow); }
+        .btn-row { display: flex; gap: 12px; flex-wrap: wrap; }
+        .btn {
+            flex: 1; min-width: 120px; padding: 14px 20px; border: none; border-radius: 8px;
+            font-family: inherit; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+            cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-primary { background: var(--neon); color: #000; }
+        .btn-primary:hover { background: #00e63c; box-shadow: 0 0 20px var(--neon-glow); transform: translateY(-1px); }
+        .btn-primary:disabled { background: #333; color: #666; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-danger:hover { background: #ff1a1a; box-shadow: 0 0 20px rgba(255,51,51,0.4); }
+        .btn-secondary { background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { border-color: var(--neon); color: var(--neon); }
+
+        .progress-section { display: flex; flex-direction: column; gap: 16px; }
+        .progress-bar-container { height: 24px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; position: relative; }
+        .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--neon) 0%, #00cc33 100%); border-radius: 12px; transition: width 0.3s ease; position: relative; }
+        .progress-bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%); animation: shimmer 1.5s infinite; }
+        @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+        .progress-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.75rem; font-weight: 700; color: #000; text-shadow: 0 0 4px rgba(0,0,0,0.5); pointer-events: none; }
+        .progress-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+        .stat-value { font-size: 1.2rem; font-weight: 700; color: var(--neon); font-variant-numeric: tabular-nums; }
+        .stat-label { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+
+        .chunk-map { display: flex; flex-direction: column; gap: 12px; }
+        .chunk-map-header { display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-dim); }
+        .chunk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(28px, 1fr)); gap: 4px; }
+        .chunk-block {
+            aspect-ratio: 1; border-radius: 4px; border: 1px solid var(--border);
+            background: var(--bg); transition: all 0.2s; position: relative; cursor: pointer;
+        }
+        .chunk-block.pending { background: var(--bg); border-color: var(--border); }
+        .chunk-block.processing { background: var(--warn); border-color: var(--warn); animation: pulseBlock 0.8s ease-in-out infinite; }
+        @keyframes pulseBlock { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .chunk-block.done { background: var(--neon); border-color: var(--neon); }
+        .chunk-block.failed { background: var(--danger); border-color: var(--danger); }
+        .chunk-block:hover::after {
+            content: attr(data-tooltip); position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+            background: var(--card-bg); border: 1px solid var(--neon); padding: 6px 10px; border-radius: 4px;
+            font-size: 0.55rem; white-space: nowrap; z-index: 10; pointer-events: none;
+        }
+        .chunk-legend { display: flex; gap: 16px; font-size: 0.6rem; color: var(--text-dim); flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .legend-color { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border); }
+
+        .terminal { background: #000; border-radius: 8px; overflow: hidden; font-size: 0.7rem; line-height: 1.6; }
+        .terminal-header { background: #111; border-bottom: 1px solid var(--border); padding: 10px 14px; display: flex; gap: 8px; }
+        .terminal-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .terminal-dot.close { background: #ff5f56; }
+        .terminal-dot.minimize { background: #ffbd2e; }
+        .terminal-dot.maximize { background: #27c93f; }
+        .terminal-title { flex: 1; color: var(--text-dim); font-size: 0.65rem; }
+        .terminal-body { padding: 14px; height: 300px; overflow-y: auto; font-family: inherit; white-space: pre-wrap; word-break: break-word; }
+        .log-entry { margin: 2px 0; display: flex; gap: 8px; }
+        .log-time { color: var(--text-dim); min-width: 70px; }
+        .log-type { min-width: 80px; font-weight: 600; }
+        .log-type.info { color: var(--neon); }
+        .log-type.warn { color: var(--warn); }
+        .log-type.error { color: var(--danger); }
+        .log-type.success { color: #00ffaa; }
+        .log-msg { color: var(--text); }
+
+        .history-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+        .history-table th, .history-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        .history-table th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 0.6rem; letter-spacing: 0.05em; }
+        .history-table tr:hover td { background: rgba(0,255,65,0.03); }
+        .history-table .status-ok { color: var(--neon); }
+        .history-table .status-fail { color: var(--danger); }
+
+        footer { padding: 20px 24px; border-top: 1px solid var(--border); text-align: center; color: var(--text-dim); font-size: 0.7rem; }
+
+        @media (max-width: 768px) {
+            .header-row { flex-direction: column; align-items: flex-start; }
+            .progress-stats { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <header>
+            <div class="header-row">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    <div>
+                        <h1>Fog Orchestrator</h1>
+                        <div class="version">v1.0.0 — Distributed Computing Mesh</div>
+                    </div>
+                </div>
+                <div class="connection-panel">
+                    <div class="qr-box">
+                        <h3>Escanea para unir nodo</h3>
+                        <canvas id="qrCanvas" width="160" height="160"></canvas>
+                        <button class="access-link" id="copyLink" title="Copiar enlace">ws://cargando...</button>
+                    </div>
+                    <div class="status-indicators">
+                        <div class="status-pill" id="wsStatus"><span class="dot"></span><span>WS Desconectado</span></div>
+                        <div class="status-pill" id="nodesCount"><span class="dot"></span><span>Nodos: 0</span></div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="grid">
+                <section class="card">
+                    <div class="card-header"><h2>Nodos Conectados</h2></div>
+                    <div class="card-body">
+                        <div class="node-list" id="nodeList">
+                            <div style="text-align:center;color:var(--text-dim);padding:40px;">Esperando conexiones...</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-header"><h2>Control de Tarea</h2></div>
+                    <div class="card-body control-panel">
+                        <div class="form-group">
+                            <label>Operación</label>
+                            <select id="operationSelect">
+                                <option value="count_bases">Conteo de Bases (A,C,G,T,N)</option>
+                                <option value="reverse_complement">Complemento Inverso</option>
+                                <option value="gc_content">Contenido GC%</option>
+                                <option value="kmer_count">Conteo K-mers (k=4)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Archivo Genómico (FASTA, FASTQ, TXT)</label>
+                            <input type="file" id="fileInput" accept=".fasta,.fa,.fastq,.fq,.txt,.genome">
+                        </div>
+                        <div class="form-group">
+                            <label>Tamaño Base de Fragmento (bytes)</label>
+                            <input type="number" id="chunkSize" value="1048576" min="65536" max="10485760" step="65536">
+                        </div>
+                        <div class="btn-row">
+                            <button class="btn btn-primary" id="btnStart" disabled>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                Iniciar Procesamiento
+                            </button>
+                            <button class="btn btn-danger" id="btnStop" disabled>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+                                Frenar
+                            </button>
+                            <button class="btn btn-secondary" id="btnExport" disabled>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                                Exportar JSON
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card grid-2">
+                    <div class="card-header"><h2>Progreso Global</h2></div>
+                    <div class="card-body progress-section">
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" id="progressBar"></div>
+                            <div class="progress-text" id="progressText">0%</div>
+                        </div>
+                        <div class="progress-stats">
+                            <div class="stat"><div class="stat-value" id="statSpeed">0.00</div><div class="stat-label">MB/s</div></div>
+                            <div class="stat"><div class="stat-value" id="statElapsed">0.0</div><div class="stat-label">Segundos</div></div>
+                            <div class="stat"><div class="stat-value" id="statChunks">0</div><div class="stat-label">Fragmentos</div></div>
+                            <div class="stat"><div class="stat-value" id="statEnergy">$0.000000</div><div class="stat-label">Costo Estimado</div></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card grid-2">
+                    <div class="card-header"><h2>Mapa del Archivo (Bloques)</h2></div>
+                    <div class="card-body chunk-map">
+                        <div class="chunk-map-header">
+                            <span>Bloques pendientes/procesando/completados</span>
+                            <span id="chunkSummary">0 / 0</span>
+                        </div>
+                        <div class="chunk-grid" id="chunkGrid"></div>
+                        <div class="chunk-legend">
+                            <div class="legend-item"><span class="legend-color" style="background:var(--bg);border-color:var(--border)"></span> Pendiente</div>
+                            <div class="legend-item"><span class="legend-color" style="background:var(--warn);border-color:var(--warn)"></span> Procesando</div>
+                            <div class="legend-item"><span class="legend-color" style="background:var(--neon);border-color:var(--neon)"></span> Completado</div>
+                            <div class="legend-item"><span class="legend-color" style="background:var(--danger);border-color:var(--danger)"></span> Error</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card grid-2">
+                    <div class="card-header"><h2>Terminal de Eventos</h2></div>
+                    <div class="card-body" style="padding:0;">
+                        <div class="terminal">
+                            <div class="terminal-header">
+                                <div class="terminal-dot close"></div>
+                                <div class="terminal-dot minimize"></div>
+                                <div class="terminal-dot maximize"></div>
+                                <span class="terminal-title">fog-orchestrator.log</span>
+                            </div>
+                            <div class="terminal-body" id="terminalBody"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card grid-2">
+                    <div class="card-header"><h2>Historial de Sesión</h2></div>
+                    <div class="card-body" style="padding:0;overflow:auto;max-height:400px;">
+                        <table class="history-table" id="historyTable">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th><th>Operación</th><th>Archivo</th><th>Tamaño</th>
+                                    <th>Nodos</th><th>Duración</th><th>Velocidad</th><th>Integridad</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                        <div id="historyEmpty" style="padding:40px;text-align:center;color:var(--text-dim);">Sin historial aún</div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer>
+            Fog Orchestrator — Computación en Niebla Distribuida · WebSocket + Web Workers · 100% En Memoria
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script>
+        const WS_URL = `ws://${location.hostname}:3000`;
+        let ws = null;
+        let currentFile = null;
+        let chunkMap = [];
+
+        function log(type, msg) {
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">${time}</span><span class="log-type ${type}">[${type.toUpperCase()}]</span><span class="log-msg">${msg}</span>`;
+            const body = document.getElementById('terminalBody');
+            body.appendChild(entry);
+            body.scrollTop = body.scrollHeight;
+        }
+
+        function connect() {
+            ws = new WebSocket(WS_URL);
+            ws.onopen = () => {
+                document.getElementById('wsStatus').className = 'status-pill connected';
+                document.getElementById('wsStatus').innerHTML = '<span class="dot"></span><span>WS Conectado</span>';
+                log('success', `Conectado a ${WS_URL}`);
+                ws.send(JSON.stringify({ type: 'register', payload: { role: 'master', name: 'Master-Control' } }));
+                generateQR();
+            };
+            ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
+            ws.onclose = () => {
+                document.getElementById('wsStatus').className = 'status-pill';
+                document.getElementById('wsStatus').innerHTML = '<span class="dot"></span><span>WS Desconectado</span>';
+                log('error', 'Desconectado. Reintentando en 3s...');
+                setTimeout(connect, 3000);
+            };
+            ws.onerror = (err) => log('error', `Error WS: ${err.message}`);
+        }
+
+        function generateQR() {
+            const url = `http://${location.hostname}:3000/node`;
+            new QRCode(document.getElementById('qrCanvas'), {
+                text: url, width: 160, height: 160,
+                colorDark: '#00ff41', colorLight: '#050505',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            document.getElementById('copyLink').textContent = url;
+            document.getElementById('copyLink').onclick = () => {
+                navigator.clipboard.writeText(url);
+                log('info', 'Enlace copiado al portapapeles');
+            };
+        }
+
+        function handleMessage(msg) {
+            switch (msg.type) {
+                case 'nodes_update':
+                    renderNodes(msg.payload);
+                    break;
+                case 'task_started':
+                    onTaskStarted(msg.payload);
+                    break;
+                case 'progress':
+                    onProgress(msg.payload);
+                    break;
+                case 'task_complete':
+                    onTaskComplete(msg.payload);
+                    break;
+                case 'task_stopped':
+                    log('warn', 'Tarea detenida por el usuario');
+                    resetTaskUI();
+                    break;
+                case 'export_result':
+                    downloadJSON(msg.payload);
+                    break;
+                case 'history':
+                    renderHistory(msg.payload);
+                    break;
+                case 'error':
+                    log('error', msg.payload);
+                    break;
+            }
+        }
+
+        function renderNodes(nodes) {
+            const list = document.getElementById('nodeList');
+            const workers = nodes.filter(n => n.role === 'worker');
+            document.getElementById('nodesCount').innerHTML = `<span class="dot"></span><span>Nodos: ${workers.length}</span>`;
+            if (workers.length === 0) {
+                list.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px;">Esperando conexiones...</div>';
+                return;
+            }
+            list.innerHTML = workers.map(n => `
+                <div class="node-card">
+                    <div class="node-avatar">${n.name.charAt(0).toUpperCase()}</div>
+                    <div class="node-info">
+                        <div class="node-name">${escapeHtml(n.name)}</div>
+                        <div class="node-meta">
+                            <span>🖥 ${escapeHtml(n.os)} / ${escapeHtml(n.browser)}</span>
+                            <span>⚡ ${n.cores} cores</span>
+                            <span>💾 ${(n.ram/1e9).toFixed(1)} GB</span>
+                            <span>🔋 ${n.battery !== null ? n.battery + '%' : 'N/A'}</span>
+                            <span>📶 ${n.latency} ms</span>
+                            <span>⬇ ${n.downloadSpeed.toFixed(1)} MB/s</span>
+                            <span>🧮 ${n.gflops} GFLOPS</span>
+                        </div>
+                    </div>
+                    <div class="node-metrics">
+                        <div class="metric"><span class="metric-label">Troceos</span><span class="metric-value">${n.chunksDone}</span></div>
+                        <div class="metric"><span class="metric-label">MB</span><span class="metric-value">${n.processedMB.toFixed(2)}</span></div>
+                        <div class="metric"><span class="metric-label">Calc</span><span class="metric-value">${n.calcSpeed.toFixed(2)}</span></div>
+                        <div class="metric"><span class="metric-label">Hilos</span><span class="metric-value">${n.activeThreads}</span></div>
+                        <span class="status-badge ${n.status}">${n.status}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function onTaskStarted(payload) {
+            log('info', `Iniciando: ${payload.operation} en ${payload.fileName} (${(payload.fileSize/1e6).toFixed(1)} MB, ${payload.totalChunks} fragmentos)`);
+            document.getElementById('btnStart').disabled = true;
+            document.getElementById('btnStop').disabled = false;
+            document.getElementById('btnExport').disabled = true;
+            document.getElementById('fileInput').disabled = true;
+            document.getElementById('operationSelect').disabled = true;
+            document.getElementById('chunkSize').disabled = true;
+            renderChunkGrid(payload.totalChunks);
+        }
+
+        function onProgress(p) {
+            document.getElementById('progressBar').style.width = `${p.percent.toFixed(1)}%`;
+            document.getElementById('progressText').textContent = `${p.percent.toFixed(1)}%`;
+            document.getElementById('statSpeed').textContent = p.speed.toFixed(2);
+            document.getElementById('statElapsed').textContent = p.elapsed.toFixed(1);
+            document.getElementById('statChunks').textContent = `${p.chunksDone} / ${p.totalChunks}`;
+            document.getElementById('statEnergy').textContent = `$${(p.speed * 0.0001 * p.elapsed).toFixed(6)}`;
+            document.getElementById('chunkSummary').textContent = `${p.chunksDone} / ${p.totalChunks}`;
+
+            p.chunkMap.forEach(c => {
+                const el = document.querySelector(`.chunk-block[data-id="${c.id}"]`);
+                if (el) {
+                    el.className = `chunk-block ${c.status}`;
+                    const nodeName = c.assignedTo ? ` → ${c.assignedTo}` : '';
+                    el.dataset.tooltip = `Bloque ${c.id}${nodeName}`;
+                }
+            });
+        }
+
+        function onTaskComplete(payload) {
+            log('success', `Completado en ${payload.duration.toFixed(1)}s — ${payload.speedMBs.toFixed(2)} MB/s — Integridad: ${payload.integrity.valid ? 'OK' : 'FALLO'}`);
+            log('info', `Costo energético estimado: ${payload.energyCost}`);
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('btnStop').disabled = true;
+            document.getElementById('btnExport').disabled = false;
+            document.getElementById('fileInput').disabled = false;
+            document.getElementById('operationSelect').disabled = false;
+            document.getElementById('chunkSize').disabled = false;
+            if (payload.integrity.valid) {
+                document.getElementById('progressBar').style.background = 'linear-gradient(90deg, #00ff41 0%, #00cc33 100%)';
+            } else {
+                document.getElementById('progressBar').style.background = 'linear-gradient(90deg, #ff3333 0%, #cc0000 100%)';
+                log('error', payload.integrity.message);
+            }
+            renderHistory(payload.sessionHistory || []);
+        }
+
+        function resetTaskUI() {
+            document.getElementById('btnStart').disabled = !currentFile;
+            document.getElementById('btnStop').disabled = true;
+            document.getElementById('btnExport').disabled = true;
+            document.getElementById('fileInput').disabled = false;
+            document.getElementById('operationSelect').disabled = false;
+            document.getElementById('chunkSize').disabled = false;
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressText').textContent = '0%';
+            document.getElementById('statSpeed').textContent = '0.00';
+            document.getElementById('statElapsed').textContent = '0.0';
+            document.getElementById('statChunks').textContent = '0';
+            document.getElementById('statEnergy').textContent = '$0.000000';
+            document.getElementById('chunkGrid').innerHTML = '';
+            document.getElementById('chunkSummary').textContent = '0 / 0';
+            document.getElementById('progressBar').style.background = 'linear-gradient(90deg, var(--neon) 0%, #00cc33 100%)';
+        }
+
+        function renderChunkGrid(total) {
+            const grid = document.getElementById('chunkGrid');
+            grid.innerHTML = '';
+            for (let i = 0; i < total; i++) {
+                const div = document.createElement('div');
+                div.className = 'chunk-block pending';
+                div.dataset.id = i;
+                div.dataset.tooltip = `Bloque ${i}`;
+                grid.appendChild(div);
+            }
+        }
+
+        function renderHistory(history) {
+            const tbody = document.querySelector('#historyTable tbody');
+            const empty = document.getElementById('historyEmpty');
+            if (history.length === 0) {
+                empty.style.display = 'block';
+                tbody.innerHTML = '';
+                return;
+            }
+            empty.style.display = 'none';
+            tbody.innerHTML = history.slice().reverse().map(h => `
+                <tr>
+                    <td>${new Date(h.timestamp).toLocaleString()}</td>
+                    <td>${h.operation}</td>
+                    <td>${escapeHtml(h.fileName)}</td>
+                    <td>${(h.fileSize/1e6).toFixed(1)} MB</td>
+                    <td>${h.nodesCount}</td>
+                    <td>${h.duration.toFixed(1)}s</td>
+                    <td>${h.speedMBs.toFixed(2)} MB/s</td>
+                    <td class="${h.integrity ? 'status-ok' : 'status-fail'}">${h.integrity ? '✓ OK' : '✗ FAIL'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function downloadJSON(data) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `fog-session-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            log('success', 'Resultados exportados a JSON');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            currentFile = e.target.files[0];
+            document.getElementById('btnStart').disabled = !currentFile;
+            if (currentFile) log('info', `Archivo seleccionado: ${currentFile.name} (${(currentFile.size/1e6).toFixed(2)} MB)`);
+        });
+
+        document.getElementById('btnStart').addEventListener('click', async () => {
+            if (!currentFile) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const base64 = e.target.result.split(',')[1];
+                ws.send(JSON.stringify({
+                    type: 'start_task',
+                    payload: {
+                        role: 'master',
+                        operation: document.getElementById('operationSelect').value,
+                        fileName: currentFile.name,
+                        fileData: base64,
+                        chunkSize: parseInt(document.getElementById('chunkSize').value)
+                    }
+                }));
+            };
+            reader.readAsDataURL(currentFile);
+        });
+
+        document.getElementById('btnStop').addEventListener('click', () => {
+            ws.send(JSON.stringify({ type: 'stop_task', payload: { role: 'master' } }));
+        });
+
+        document.getElementById('btnExport').addEventListener('click', () => {
+            ws.send(JSON.stringify({ type: 'export_json', payload: { role: 'master' } }));
+        });
+
+        connect();
+        ws.send(JSON.stringify({ type: 'get_history', payload: { role: 'master' } }));
+    </script>
+</body>
+</html>
